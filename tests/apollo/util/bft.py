@@ -67,7 +67,7 @@ BFT_CLIENT_TYPE = bft_client.TcpTlsClient if os.environ.get('BUILD_COMM_TCP_TLS'
 # If you need more clients, increase with caution.
 # Reserved clients (RESERVED_CLIENTS_QUOTA) are not part of NUM_CLIENTS
 RESERVED_CLIENTS_QUOTA = 2
-BFT_CONFIGS_NUM_CLIENTS = 10
+BFT_CONFIGS_NUM_CLIENTS = 3
 NUM_PARTICIPANTS = 5
 
 @log_call(action_type="Test_Configs", include_args=[])
@@ -75,7 +75,7 @@ def interesting_configs(selected=None):
     if selected is None:
         selected=lambda *config: True
 
-    bft_configs = [{'n': 6, 'f': 1, 'c': 1, 'num_clients': BFT_CONFIGS_NUM_CLIENTS},
+    bft_configs = [#{'n': 6, 'f': 1, 'c': 1, 'num_clients': BFT_CONFIGS_NUM_CLIENTS},
                    {'n': 7, 'f': 2, 'c': 0, 'num_clients': BFT_CONFIGS_NUM_CLIENTS},
                    # {'n': 4, 'f': 1, 'c': 0, 'num_clients': BFT_CONFIGS_NUM_CLIENTS},
                    # {'n': 9, 'f': 2, 'c': 1, 'num_clients': BFT_CONFIGS_NUM_CLIENTS}
@@ -150,9 +150,11 @@ def with_bft_network(start_replica_cmd, selected_configs=None, num_clients=None,
             if "bft_network" in kwargs:
                 bft_network = kwargs.pop("bft_network")
                 bft_network.is_existing = True
+                log.log_message(message_type=f'Anand : bft_network true')
                 with log.start_task(action_type=async_fn.__name__):
                     await async_fn(*args, **kwargs, bft_network=bft_network)
             else:
+                log.log_message(message_type=f'Anand : bft_network false')
                 configs = bft_configs if bft_configs is not None else interesting_configs(selected_configs)
                 for bft_config in configs:
 
@@ -166,6 +168,7 @@ def with_bft_network(start_replica_cmd, selected_configs=None, num_clients=None,
                                         start_replica_cmd=start_replica_cmd,
                                         stop_replica_cmd=None,
                                         num_ro_replicas=num_ro_replicas)
+                    print("Anand: new",start_replica_cmd)
                     async with trio.open_nursery() as background_nursery:
                         with BftTestNetwork.new(config, background_nursery) as bft_network:
                             bft_network.current_test = async_fn.__name__ + "_n=" + str(bft_config['n']) \
@@ -439,6 +442,9 @@ class BftTestNetwork:
 
     def random_client(self):
         return random.choice(list(self.clients.values()))
+    
+    def get_all_clients(self):
+        return self.clients.values()
 
     def random_clients(self, max_clients):
         return set(random.choices(list(self.clients.values()), k=max_clients))
@@ -972,19 +978,23 @@ class BftTestNetwork:
                                            replica,
                                            nursery.cancel_scope)
 
-    async def wait_for_replicas_to_collect_stable_checkpoint(self, replicas, checkpoint, timeout=30):
+    async def wait_for_replicas_to_collect_stable_checkpoint(self, replicas, checkpoint, timeout=500):
+        i=0
         with log.start_action(action_type="wait_for_replicas_to_collect_stable_checkpoint", replicas=replicas) as action:
             with trio.fail_after(seconds=timeout):
                 last_stable_seqs = []
                 while True:
                     for replica_id in replicas:
                         last_stable = await self.get_metric(replica_id, self, 'Gauges', "lastStableSeqNum")
+                        print("Anand: last stable seq for replica # last stable",replica_id ,last_stable,i)
                         last_stable_seqs.append(last_stable)
+                        i+=1
                         action.log(message_type="lastStableSeqNum", replica=replica_id, last_stable=last_stable)
                     if sum(x == 150 * checkpoint for x in last_stable_seqs) == len(replicas):
                         break
                     else:
                         last_stable_seqs.clear()
+                        #print("Anand: wait_for_replicas_to_collect_stable_checkpoint")
                         await trio.sleep(seconds=0.1)
 
     async def _wait_to_receive_st_msgs(self, replica, cancel_scope):
@@ -1051,6 +1061,7 @@ class BftTestNetwork:
             with trio.fail_after(30): # seconds
                 async with trio.open_nursery() as nursery:
                     for replica_id in replica_ids:
+                        print("Anand:wait_for_replicas_to_checkpoint")
                         nursery.start_soon(self.wait_for_checkpoint, replica_id, expected_checkpoint_num)
 
     async def wait_for_checkpoint(self, replica_id, expected_checkpoint_num=None):

@@ -189,12 +189,12 @@ class SimpleKVBCProtocol:
             else:
                 kv_input = True
             read_version = 0
-            if self.tracker is not None:
-                read_version = self.tracker.read_block_id()
-                seq_num = client.req_seq_num.next()
-                seq_num = 0
-                client_id = client.client_id
-                self.tracker.send_write(client_id, seq_num, set(), dict(kv), read_version)
+            # if self.tracker is not None:
+            #     read_version = self.tracker.read_block_id()
+            #     seq_num = client.req_seq_num.next()
+            #     seq_num = 0
+            #     client_id = client.client_id
+            #     self.tracker.send_write(client_id, seq_num, set(), dict(kv), read_version)
             msg = self.write_req(set(), kv, read_version, long_exec)
             
             try:
@@ -202,12 +202,12 @@ class SimpleKVBCProtocol:
                 reply = self.parse_reply(reply)
                 assert reply.success
 
-                if self.tracker is not None:
-                    self.tracker.status.record_client_reply(client_id)
-                    self.tracker.handle_write_reply(client_id, seq_num, reply)
+                # if self.tracker is not None:
+                #     self.tracker.status.record_client_reply(client_id)
+                #     self.tracker.handle_write_reply(client_id, seq_num, reply)
             except trio.TooSlowError:
-                if self.tracker is not None:
-                    self.tracker.status.record_client_timeout(client_id)
+                # if self.tracker is not None:
+                #     self.tracker.status.record_client_timeout(client_id)
                 raise trio.TooSlowError
 
             if kv_input:
@@ -288,6 +288,40 @@ class SimpleKVBCProtocol:
 
             return client, known_key, known_val
 
+    # async def fill_and_wait_for_checkpoint(
+    #         self, initial_nodes,
+    #         num_of_checkpoints_to_add=2,
+    #         verify_checkpoint_persistency=True,
+    #         assert_state_transfer_not_started=True):
+    #     """
+    #     A helper function used by tests to fill a window with data and then
+    #     checkpoint it.
+
+    #     The nodes are then stopped and restarted to ensure the checkpoint data
+    #     was persisted.
+
+    #     TODO: Make filling concurrent to speed up tests
+    #     """
+    #     with log.start_action(action_type="fill_and_wait_for_checkpoint"):
+    #         client = self.bft_network.random_client()
+    #         checkpoint_before = await self.bft_network.wait_for_checkpoint(
+    #             replica_id=random.choice(initial_nodes))
+    #         # Write enough data to checkpoint and create a need for state transfer
+    #         for i in range(1 + num_of_checkpoints_to_add * 150):
+    #             key = self.random_key()
+    #             val = self.random_value()
+    #             reply = await self.write_known_kv([(key, val)], client)
+    #             assert reply.success
+            
+    #         # await self.bft_network.wait_for_replicas_to_collect_stable_checkpoint(
+    #         #     initial_nodes, checkpoint_before + num_of_checkpoints_to_add)
+
+    #         # await self.network_wait_for_checkpoint(
+    #         #     initial_nodes,
+    #         #     expected_checkpoint_num=lambda ecn: ecn == checkpoint_before + num_of_checkpoints_to_add,
+    #         #     verify_checkpoint_persistency=verify_checkpoint_persistency,
+    #         #     assert_state_transfer_not_started=assert_state_transfer_not_started)
+    
     async def fill_and_wait_for_checkpoint(
             self, initial_nodes,
             num_of_checkpoints_to_add=2,
@@ -303,18 +337,25 @@ class SimpleKVBCProtocol:
         TODO: Make filling concurrent to speed up tests
         """
         with log.start_action(action_type="fill_and_wait_for_checkpoint"):
-            client = self.bft_network.random_client()
+            clients = self.bft_network.get_all_clients()
             checkpoint_before = await self.bft_network.wait_for_checkpoint(
                 replica_id=random.choice(initial_nodes))
             # Write enough data to checkpoint and create a need for state transfer
-            for i in range(1 + num_of_checkpoints_to_add * 150):
-                key = self.random_key()
-                val = self.random_value()
-                reply = await self.write_known_kv([(key, val)], client)
-                assert reply.success
-            
+            total_txns= 1 + num_of_checkpoints_to_add * 150
+            #total_clients = 5
+            i=0
+            while i <total_txns:
+                async with trio.open_nursery() as nursery:
+                    for client in clients:
+                        key = self.random_key()
+                        val = self.random_value()
+                        #log.log_message(message_type=f'Anand : client #{client}')
+                        reply = nursery.start_soon(self.write_known_kv,[(key, val)], client)
+                        #assert reply.success
+                        log.log_message(message_type=f'Anand : reply #{reply}')
+                        i+=1
             await self.bft_network.wait_for_replicas_to_collect_stable_checkpoint(
-                initial_nodes, checkpoint_before + num_of_checkpoints_to_add)
+                 initial_nodes, checkpoint_before + num_of_checkpoints_to_add)
 
             await self.network_wait_for_checkpoint(
                 initial_nodes,

@@ -188,13 +188,14 @@ class BftClient(ABC):
 
         if m_of_n_quorum is None:
             m_of_n_quorum = MofNQuorum.LinearizableQuorum(self.config, [r.id for r in self.replicas])
-
         # Raise a trio.TooSlowError exception if a quorum of replies
         try:
             with trio.fail_after(self.config.req_timeout_milli / 1000):
                 self._reset_on_new_request([seq_num])
+                print(f"Anand :client_id={client_id} send seq_num={seq_num}")
                 replies = await self._send_receive_loop(
                     data, read_only, m_of_n_quorum, include_ro=include_ro, no_retries=no_retries)
+                print(f"client_id={client_id} got reply seq_num={seq_num} replies={replies}")
                 return next(iter(self.replies.values())).get_common_data() if replies else None
         except trio.TooSlowError:
             print("TooSlowError thrown from client_id", self.client_id, "for seq_num", seq_num)

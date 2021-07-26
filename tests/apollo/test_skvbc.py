@@ -19,7 +19,7 @@ import trio
 from util import blinking_replica
 from util import skvbc as kvbc
 from util.bft import with_trio, with_bft_network, KEY_FILE_PREFIX
-
+from util import eliot_logging as log
 
 def start_replica_cmd(builddir, replica_id):
     """
@@ -59,6 +59,7 @@ class SkvbcTest(unittest.TestCase):
 
         stale_node = random.choice(
             bft_network.all_replicas(without={0}))
+        log.log_message(message_type=f'Anand : stale node is #{stale_node}')
 
         await skvbc.prime_for_state_transfer(
             stale_nodes={stale_node},
